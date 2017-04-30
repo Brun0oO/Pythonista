@@ -1,4 +1,13 @@
+# coding: utf-8
+
 import ui, console, time, motion
+
+# This demo allows to open webvr content in true fullscreen mode in Pythonista.
+# Two vr contents are available :
+# - the first one comes from sketchfab and displays a 3D room.
+# - the second one comes from https://github.com/ryanbetts/dayframe .
+# It uses a web framework for building vr experiences. The more one thing is the emulation of a daydream controller.
+# (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote)
 
 demoURL = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 
