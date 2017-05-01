@@ -1,9 +1,12 @@
 # coding: utf-8
 
 import ui, console, time, motion
-import threading, Queue
+import threading, queue
+from contextlib import closing
+
 from datetime import datetime
 import re, urllib2
+import atexit
 
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
 # Two vr contents are available :
@@ -14,6 +17,7 @@ import re, urllib2
 
 demoURL = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 
+theThread = None
 
 OUTPUT_TEMPLATE = u"""\
 Number of threads: {}
@@ -23,13 +27,23 @@ Last polled: {}
 Current time: {}
 """
 
+@atexit.register
+def goodbye():
+    print("Leaving the Python sector...")
+    if theThread.isAlive():
+        print("Terminating thread in main")
+        theThread.stop()
+    print("Done!")
+
 # thread worker
 def worker(q):
     URL = 'http://tycho.usno.navy.mil/cgi-bin/timer.pl'
     RE_TIME = re.compile('<BR>(.*?)\t.*Universal Time')
     while True:
         obj = q.get()
-        html = urllib2.urlopen(URL).read()
+        request = urllib.request.Request(URL)
+        with closing(urllib.request.urlopen(request)) as source:
+            html = source.read().decode('utf-8')
         obj.text = RE_TIME.search(html).group(1)
         q.task_done()
 
@@ -59,14 +73,18 @@ def waitForLandscapeMode():
 # the main class
 class MyWebVRView(ui.View):
     def __init__(self, url):
+        global theThread
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
+        self.text = "Waiting..."
+        self.frame = 0
+        self.q = queue.Queue(1)
 
         # for an iphone 6S plus, a small vertical offset needs to be set
-        trans=ui.Transform().translation(0,-27)
+        trans = ui.Transform().translation(0,-27)
         sx = 1.07 # and a small scale (almost for sketchfab can be ignored for an aframe page)
-        scale=ui.Transform().scale(sx,sx)
+        scale = ui.Transform().scale(sx,sx)
         self.wv.transform = trans.concat(scale)
 
         self.wv.load_url(url)
@@ -76,12 +94,10 @@ class MyWebVRView(ui.View):
 
         self.loadURL(url)
 
-        self.text = "Waiting..."
-        self.frame = 0
-        self.q = Queue.Queue(1)
-        t = threading.Thread(target=worker, args=(self.q,))
-        t.daemon = True
-        t.start()
+
+        theThread = threading.Thread(target=worker, args=(self.q,))
+        theThread.daemon = True
+        theThread.start()
 
     def update(self):
         self.frame += 1
@@ -142,4 +158,7 @@ if __name__ == '__main__':
     url = demoURL[demoID-1]
 
     waitForLandscapeMode()
-    MyWebVRView(url)
+    try:
+        MyWebVRView(url)
+    finally:
+        exit()
