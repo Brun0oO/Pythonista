@@ -5,7 +5,7 @@ import threading, queue
 from contextlib import closing
 
 from datetime import datetime
-import re, urllib2
+import re, urllib
 import atexit
 
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
