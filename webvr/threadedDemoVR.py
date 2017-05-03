@@ -5,7 +5,7 @@ import threading, queue
 from contextlib import closing
 
 from datetime import datetime
-import re, urllib
+import re, urllib.request
 import atexit
 
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
@@ -31,7 +31,7 @@ Current time: {}
 def goodbye():
     global theTread
     print("Leaving the Python sector...")
-    if theThread.isAlive():
+    if theThread and theThread.isAlive():
         print("Terminating thread in main")
         theThread.stop()
     print("Done!")
@@ -45,28 +45,23 @@ class workerThread(threading.Thread):
         threading.Thread.__init__(self)
         self.finished = False
         self.daemon = True
+        self.q = q
 
     def run(self):
         while not self.finished:
-            obj = q.get()
-            request = urllib.request.Request(URL)
+            obj = self.q.get()
+            request = urllib.request.Request(self.URL)
             with closing(urllib.request.urlopen(request)) as source:
                 html = source.read().decode('utf-8')
-            obj.text = RE_TIME.search(html).group(1)
-            q.task_done()
+            obj.text = self.RE_TIME.search(html).group(1)
+            print(">>%s"%obj.text)
+            self.q.task_done()
+        print("end of running")
+            
     def stop(self):
         self.finished = True
 
-def worker(q):
-    URL = 'http://tycho.usno.navy.mil/cgi-bin/timer.pl'
-    RE_TIME = re.compile('<BR>(.*?)\t.*Universal Time')
-    while True:
-        obj = q.get()
-        request = urllib.request.Request(URL)
-        with closing(urllib.request.urlopen(request)) as source:
-            html = source.read().decode('utf-8')
-        obj.text = RE_TIME.search(html).group(1)
-        q.task_done()
+
 
 
 
@@ -99,7 +94,7 @@ class MyWebVRView(ui.View):
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
         self.text = "Waiting..."
-        self.frame = 0
+        self.numframe = 0
         self.q = queue.Queue(1)
         theThread = workerThread(self.q)
         theThread.start()
@@ -121,16 +116,22 @@ class MyWebVRView(ui.View):
 
 
     def update(self):
-        self.frame += 1
+        self.numframe += 1
         now = datetime.utcnow().strftime('%b. %d, %H:%M:%S UTC')
         if self.q.empty():
             self.q.put(self)
 
         output = OUTPUT_TEMPLATE.format(
-            threading.active_count(), self.q.qsize(), self.frame, self.text,
+            threading.active_count(), self.q.qsize(), self.numframe, self.text,
             now
         )
+        #print(output)
 
+    def run(self):
+        while True:
+            self.update()
+            time.sleep(1.0/60)
+            
     def loadURL(self, url):
         url = self.patch_SKETCHFAB_page(url)
         self.wv.load_url(url)
@@ -180,6 +181,7 @@ if __name__ == '__main__':
 
     waitForLandscapeMode()
     try:
-        MyWebVRView(url)
+        MyWebVRView(url).run()
     finally:
         exit()
+
