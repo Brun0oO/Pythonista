@@ -29,6 +29,7 @@ Current time: {}
 
 @atexit.register
 def goodbye():
+    global theTread
     print("Leaving the Python sector...")
     if theThread.isAlive():
         print("Terminating thread in main")
@@ -36,6 +37,26 @@ def goodbye():
     print("Done!")
 
 # thread worker
+class workerThread(threading.Thread):
+    URL = 'http://tycho.usno.navy.mil/cgi-bin/timer.pl'
+    RE_TIME = re.compile('<BR>(.*?)\t.*Universal Time')
+
+    def __init__(self, q):
+        threading.Thread.__init__(self)
+        self.finished = False
+        self.daemon = True
+
+    def run(self):
+        while not self.finished:
+            obj = q.get()
+            request = urllib.request.Request(URL)
+            with closing(urllib.request.urlopen(request)) as source:
+                html = source.read().decode('utf-8')
+            obj.text = RE_TIME.search(html).group(1)
+            q.task_done()
+    def stop(self):
+        self.finished = True
+
 def worker(q):
     URL = 'http://tycho.usno.navy.mil/cgi-bin/timer.pl'
     RE_TIME = re.compile('<BR>(.*?)\t.*Universal Time')
@@ -80,6 +101,8 @@ class MyWebVRView(ui.View):
         self.text = "Waiting..."
         self.frame = 0
         self.q = queue.Queue(1)
+        theThread = workerThread(self.q)
+        theThread.start()
 
         # for an iphone 6S plus, a small vertical offset needs to be set
         trans = ui.Transform().translation(0,-27)
@@ -95,9 +118,7 @@ class MyWebVRView(ui.View):
         self.loadURL(url)
 
 
-        theThread = threading.Thread(target=worker, args=(self.q,))
-        theThread.daemon = True
-        theThread.start()
+
 
     def update(self):
         self.frame += 1
