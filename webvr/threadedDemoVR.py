@@ -8,6 +8,8 @@ from datetime import datetime
 import re, urllib.request
 import atexit
 
+import random
+
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
 # Two vr contents are available :
 # - the first one comes from sketchfab and displays a 3D room.
@@ -38,8 +40,6 @@ def goodbye():
 
 # thread worker
 class workerThread(threading.Thread):
-    URL = 'http://tycho.usno.navy.mil/cgi-bin/timer.pl'
-    RE_TIME = re.compile('<BR>(.*?)\t.*Universal Time')
 
     def __init__(self, q):
         threading.Thread.__init__(self)
@@ -50,11 +50,7 @@ class workerThread(threading.Thread):
     def run(self):
         while not self.finished:
             obj = self.q.get()
-            request = urllib.request.Request(self.URL)
-            with closing(urllib.request.urlopen(request)) as source:
-                html = source.read().decode('utf-8')
-            obj.text = self.RE_TIME.search(html).group(1)
-            print(">>%s"%obj.text)
+            obj.text = str(random.randint(1,1000))
             self.q.task_done()
         print("end of running")
             
@@ -125,7 +121,7 @@ class MyWebVRView(ui.View):
             threading.active_count(), self.q.qsize(), self.numframe, self.text,
             now
         )
-        #print(output)
+        print(output)
 
     def run(self):
         while True:
