@@ -9,7 +9,6 @@ import re, urllib.request
 import atexit
 
 import random
-import sound
 
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
 # Two vr contents are available :
@@ -30,15 +29,7 @@ Last polled: {}
 Current time: {}
 """
 
-@atexit.register
-def goodbye():
-    global theTread
-    print("Leaving the Python sector...")
-    if theThread and theThread.isAlive():
-        print("Terminating thread in main")
-        theThread.stop()
-        time.sleep(1)
-    print("Done!")
+
 
 # thread worker
 class workerThread(threading.Thread):
@@ -48,20 +39,15 @@ class workerThread(threading.Thread):
         self.finished = False
         self.daemon = True
         self.q = q
-        print(">%s"%self.name)
+
 
     def run(self):
         while not self.finished:
-            print(">")
             obj = self.q.get()
             obj.text = str(random.randint(1,1000))
             self.q.task_done()
-            print("<")
-        print("** end of running:%s"%self.name)
-        sound.play_effect('arcade:Coin_1')
-            
+
     def stop(self):
-        print("** stop:%s"%self.name)
         self.finished = True
 
 
@@ -92,16 +78,14 @@ def waitForLandscapeMode():
 # the main class
 class MyWebVRView(ui.View):
     def __init__(self, url):
-        global theThread
+
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
         self.finished = False
         self.text = "Waiting..."
         self.numframe = 0
-        self.q = queue.Queue(1)
-        theThread = workerThread(self.q)
-        theThread.start()
+        self.start_workerThread()
 
         # for an iphone 6S plus, a small vertical offset needs to be set
         trans = ui.Transform().translation(0,-27)
@@ -120,7 +104,22 @@ class MyWebVRView(ui.View):
     def will_close(self):
        self.finished = True
         
-
+    def start_workerThread(self):
+        global theThread
+        self.q = queue.Queue(1)
+        theThread = workerThread(self.q)
+        theThread.start()
+        
+    def stop_workerThread(self):
+        global theThread
+        if theThread is None:
+            return
+        theThread.stop()
+        while theThread and theThread.isAlive():
+            if self.q.empty():
+                self.q.put(self)
+            time.sleep(1.0/60)
+            
     def update(self):
         self.numframe += 1
         now = datetime.utcnow().strftime('%b. %d, %H:%M:%S UTC')
@@ -137,9 +136,8 @@ class MyWebVRView(ui.View):
         while not self.finished:
             self.update()
             time.sleep(1.0/60)
-        print("avant join")
-        theThread.join()
-        print("apres join")
+        self.stop_workerThread()
+ 
 
             
     def loadURL(self, url):
@@ -190,8 +188,7 @@ if __name__ == '__main__':
     url = demoURL[demoID-1]
 
     waitForLandscapeMode()
-    try:
-        MyWebVRView(url).run()
-    finally:
-        exit()
+    
+    MyWebVRView(url).run()
+    
 
