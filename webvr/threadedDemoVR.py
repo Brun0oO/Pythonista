@@ -9,6 +9,7 @@ import re, urllib.request
 import atexit
 
 import random
+import sound
 
 # This demo allows to open webvr content in true fullscreen mode in Pythonista.
 # Two vr contents are available :
@@ -36,6 +37,7 @@ def goodbye():
     if theThread and theThread.isAlive():
         print("Terminating thread in main")
         theThread.stop()
+        time.sleep(1)
     print("Done!")
 
 # thread worker
@@ -46,15 +48,20 @@ class workerThread(threading.Thread):
         self.finished = False
         self.daemon = True
         self.q = q
+        print(">%s"%self.name)
 
     def run(self):
         while not self.finished:
+            print(">")
             obj = self.q.get()
             obj.text = str(random.randint(1,1000))
             self.q.task_done()
-        print("end of running")
+            print("<")
+        print("** end of running:%s"%self.name)
+        sound.play_effect('arcade:Coin_1')
             
     def stop(self):
+        print("** stop:%s"%self.name)
         self.finished = True
 
 
@@ -89,6 +96,7 @@ class MyWebVRView(ui.View):
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
+        self.finished = False
         self.text = "Waiting..."
         self.numframe = 0
         self.q = queue.Queue(1)
@@ -109,7 +117,9 @@ class MyWebVRView(ui.View):
         self.loadURL(url)
 
 
-
+    def will_close(self):
+       self.finished = True
+        
 
     def update(self):
         self.numframe += 1
@@ -117,16 +127,20 @@ class MyWebVRView(ui.View):
         if self.q.empty():
             self.q.put(self)
 
+        for t in threading.enumerate():
+            print(t.name)
         output = OUTPUT_TEMPLATE.format(
-            threading.active_count(), self.q.qsize(), self.numframe, self.text,
-            now
-        )
+        threading.active_count(), self.q.qsize(), self.numframe, self.text, now)
         print(output)
 
     def run(self):
-        while True:
+        while not self.finished:
             self.update()
             time.sleep(1.0/60)
+        print("avant join")
+        theThread.join()
+        print("apres join")
+
             
     def loadURL(self, url):
         url = self.patch_SKETCHFAB_page(url)
