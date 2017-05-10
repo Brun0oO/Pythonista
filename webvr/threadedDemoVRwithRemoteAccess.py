@@ -7,13 +7,29 @@ from contextlib import closing
 from datetime import datetime
 import re, urllib.request
 
+from flask import Flask
+from flask import request
 
-from flask import Flask, request
-from flask_control import FlaskController
+
+import requests
+from threading import Timer
+
+import random
+
+cache = {}
+lock_cache = threading.RLock()
 
 app = Flask(__name__)
 @app.route("/")
 def hello():
+    lock_cache.acquire()
+    try:
+        q = cache['q']
+        obj = q.get()
+        obj.text = 'hello'
+        q.task_done()
+    finally:
+        lock_cache.release()
     #obj = self.q.get()
     #obj.text = str(random.randint(1,1000))
     #self.q.task_done()
@@ -39,29 +55,55 @@ Last polled: {}
 Current time: {}
 """
 
-from flask import request
+
+
+LAST_REQUEST_MS = 0
+@app.before_request
+def update_last_request_ms():
+    global LAST_REQUEST_MS
+    LAST_REQUEST_MS = time.time() * 1000
+    
+@app.route('/seriouslykill', methods=['POST'])
+def seriouslykill():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+    return "Shutting down..."
+    
+@app.route('/kill', methods=['POST'])
+def kill():
+    last_ms = LAST_REQUEST_MS
+    def shutdown():
+        if LAST_REQUEST_MS <= last_ms:  # subsequent requests abort shutdown
+            requests.post('http://localhost:5000/seriouslykill')
+        else:
+            pass
+
+    Timer(1.0, shutdown).start()  # wait 1 second
+    return "Shutting down..."
 
 
 
 # thread worker
 class workerThread(threading.Thread):
 
-    def __init__(self, q):
+    def __init__(self):
         threading.Thread.__init__(self)
         self.finished = False
         self.daemon = True
-        self.q = q
-        self.fc = FlaskController(app, True)
+        
+        
 
 
     def run(self):
-        self.fc.start()
-            
+        app.run(host='0.0.0.0', port=5000)
+        print("stopped")
 
     def stop(self):
         self.finished = True
-        self.fc.stop()
-        self.fc.await()
+        requests.post('http://localhost:5000/kill')
+        
         
 
 
@@ -119,10 +161,13 @@ class MyWebVRView(ui.View):
        self.finished = True
         
     def start_workerThread(self):
+        global app
         global theThread
-        self.q = queue.Queue(1)
-        theThread = workerThread(self.q)
+        with lock_cache:
+            cache['q'] = queue.Queue(1)
+        theThread = workerThread()
         theThread.start()
+        
         
     def stop_workerThread(self):
         global theThread
@@ -130,21 +175,26 @@ class MyWebVRView(ui.View):
             return
         theThread.stop()
         while theThread and theThread.isAlive():
-            if self.q.empty():
-                self.q.put(self)
+            with lock_cache:
+                q = cache['q']
+                if q.empty():
+                    q.put(self)
             time.sleep(1.0/60)
+
             
     def update(self):
         self.numframe += 1
         now = datetime.utcnow().strftime('%b. %d, %H:%M:%S UTC')
-        if self.q.empty():
-            self.q.put(self)
+        with lock_cache:
+            q = cache['q']
+            if q.empty():
+                q.put(self)
 
-        for t in threading.enumerate():
-            print(t.name)
-        output = OUTPUT_TEMPLATE.format(
-        threading.active_count(), self.q.qsize(), self.numframe, self.text, now)
-        print(output)
+            #for t in threading.enumerate():
+            #    print(t.name)
+            output = OUTPUT_TEMPLATE.format(
+            threading.active_count(), q.qsize(), self.numframe, self.text, now)
+            print(output)
 
     def run(self):
         while not self.finished:
