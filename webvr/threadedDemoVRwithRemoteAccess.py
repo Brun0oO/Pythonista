@@ -14,7 +14,7 @@ from objc_util import *
 import requests
 from threading import Timer
 
-import random
+
 
 
 
@@ -26,7 +26,7 @@ import random
 # It uses a web framework for building vr experiences. The "more one thing" is the emulation of a daydream controller.
 # (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote)
 
-demoURL = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
+demoURLs = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 httpPort = 8080
 
 theThread = None
@@ -35,13 +35,6 @@ theSharing = {}
 lock_theSharing = threading.RLock()
 app = Flask(__name__)
 
-OUTPUT_TEMPLATE = u"""\
-Number of threads: {}
-Queue size: {}
-Frame number: {}
-Last polled: {}
-Current time: {}
-"""
 
 @app.route("/", methods=['GET', 'POST'])
 def index():
@@ -52,7 +45,7 @@ def index():
         try:
             q = theSharing['queue']
             obj = q.get()
-            obj.text = request.form['command']
+            obj.next_url = request.form['command']
             q.task_done()
         finally:
             lock_theSharing.release()
@@ -91,7 +84,7 @@ def get_local_ip_addr(): # Get the local ip address of the device
     ip = s.getsockname()[0] # Get our IP address from the socket
     s.close() # Close the socket
     return ip # And return the IP address
-    
+
 def check_if_url_is_valid(value):
     h = httplib2.Http()
     value = unshorten_url(value)
@@ -162,8 +155,8 @@ class MyWebVRView(ui.View):
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
         self.finished = False
-        self.text = "Waiting..."
-        self.numframe = 0
+        self.current_url = None
+        self.next_url = ""
         self.start_workerThread()
 
         # for an iphone 6S plus, a small vertical offset needs to be set
@@ -172,7 +165,7 @@ class MyWebVRView(ui.View):
         scale = ui.Transform().scale(sx,sx)
         self.wv.transform = trans.concat(scale)
 
-        self.wv.load_url(url)
+        #self.wv.load_url(url)
         self.add_subview(self.wv)
 
         self.present("full_screen", hide_title_bar=True, orientations=['landscape'])
@@ -205,18 +198,14 @@ class MyWebVRView(ui.View):
 
 
     def update(self):
-        self.numframe += 1
-        now = datetime.utcnow().strftime('%b. %d, %H:%M:%S UTC')
+        url = ""
         with lock_theSharing:
             q = theSharing['queue']
             if q.empty():
                 q.put(self)
-
-            #for t in threading.enumerate():
-            #    print(t.name)
-            output = OUTPUT_TEMPLATE.format(
-            threading.active_count(), q.qsize(), self.numframe, self.text, now)
-            #print(output)
+            url = self.next_url
+        if url != "":
+            self.loadURL(url)
 
     def run(self):
         while not self.finished:
@@ -228,8 +217,11 @@ class MyWebVRView(ui.View):
 
     def loadURL(self, url):
         url = self.patch_SKETCHFAB_page(url)
-        self.wv.load_url(url)
-        self.patch_AFRAME_page()
+        if check_if_url_is_valid(url):
+            if self.current_url is None or (self.current_url != url):
+                self.current_url = url
+                self.wv.load_url(self.current_url)
+                self.patch_AFRAME_page()
 
     # in case of a sketchfab url, add the auto cardboard view parameter at the end of string...
     def patch_SKETCHFAB_page(self, url):
@@ -271,7 +263,7 @@ customEnterVR();
 
 if __name__ == '__main__':
     demoID = console.alert('Select a demo','(%s:%d)'% (get_local_ip_addr(), httpPort),'sketchfab','a-frame')
-    url = demoURL[demoID-1]
+    url = demoURLs[demoID-1]
 
     waitForLandscapeMode()
 
