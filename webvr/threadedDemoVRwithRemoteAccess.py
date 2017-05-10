@@ -9,7 +9,7 @@ import re, urllib.request, socket
 
 from flask import Flask, request, render_template
 
-
+from objc_util import *
 
 import requests
 from threading import Timer
@@ -27,9 +27,11 @@ import random
 # (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote)
 
 demoURL = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
+httpPort = 8080
 
 theThread = None
 theSharing = {}
+
 lock_theSharing = threading.RLock()
 app = Flask(__name__)
 
@@ -76,7 +78,7 @@ def kill():
     last_ms = LAST_REQUEST_MS
     def shutdown():
         if LAST_REQUEST_MS <= last_ms:  # subsequent requests abort shutdown
-            requests.post('http://localhost/seriouslykill')
+            requests.post('http://localhost:%d/seriouslykill' % httpPort)
         else:
             pass
 
@@ -99,16 +101,16 @@ class workerThread(threading.Thread):
 
     def run(self):
         NSNetService = ObjCClass('NSNetService')  # Bonjour publication
-        service = NSNetService.alloc().initWithDomain_type_name_port_('', '_http._tcp', 'VR Viewer Panel', 80)
+        service = NSNetService.alloc().initWithDomain_type_name_port_('', '_http._tcp', 'VR Viewer Panel', httpPort)
         try:
             service.publish()
-            app.run(host='0.0.0.0', port=80)
+            app.run(host='0.0.0.0', port=httpPort)
         finally:
             service.stop()
             service.release()
 
     def stop(self):
-        requests.post('http://localhost/kill')
+        requests.post('http://localhost:%d/kill' % httpPort)
 
 
 
@@ -199,7 +201,7 @@ class MyWebVRView(ui.View):
             #    print(t.name)
             output = OUTPUT_TEMPLATE.format(
             threading.active_count(), q.qsize(), self.numframe, self.text, now)
-            print(output)
+            #print(output)
 
     def run(self):
         while not self.finished:
@@ -253,7 +255,7 @@ customEnterVR();
             res=self.wv.eval_js(js_code)
 
 if __name__ == '__main__':
-    demoID = console.alert('Select a demo','(%s)'%get_local_ip_addr(),'sketchfab','a-frame')
+    demoID = console.alert('Select a demo','(%s:%d)'% (get_local_ip_addr(), httpPort),'sketchfab','a-frame')
     url = demoURL[demoID-1]
 
     waitForLandscapeMode()
