@@ -7,8 +7,8 @@ from contextlib import closing
 from datetime import datetime
 import re, urllib.request
 
-from flask import Flask
-from flask import request
+from flask import Flask, request, render_template
+
 
 
 import requests
@@ -16,36 +16,22 @@ from threading import Timer
 
 import random
 
-cache = {}
-lock_cache = threading.RLock()
 
-app = Flask(__name__)
-@app.route("/")
-def hello():
-    lock_cache.acquire()
-    try:
-        q = cache['q']
-        obj = q.get()
-        obj.text = 'hello'
-        q.task_done()
-    finally:
-        lock_cache.release()
-    #obj = self.q.get()
-    #obj.text = str(random.randint(1,1000))
-    #self.q.task_done()
-    return "Hello World!"
- 
 
-# This demo allows to open webvr content in true fullscreen mode in Pythonista.
+
+# This demo allows to open webvr content in true fullscreen mode using Pythonista.
 # Two vr contents are available :
 # - the first one comes from sketchfab and displays a 3D room.
 # - the second one comes from https://github.com/ryanbetts/dayframe .
-# It uses a web framework for building vr experiences. The more one thing is the emulation of a daydream controller.
+# It uses a web framework for building vr experiences. The "more one thing" is the emulation of a daydream controller.
 # (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote)
 
 demoURL = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 
 theThread = None
+theSharing = {}
+lock_theSharing = threading.RLock()
+app = Flask(__name__)
 
 OUTPUT_TEMPLATE = u"""\
 Number of threads: {}
@@ -55,6 +41,20 @@ Last polled: {}
 Current time: {}
 """
 
+@app.route("/", methods=['GET', 'POST'])
+def index():
+    if request.method == 'GET':
+        return render_template('control.html')
+    else:
+        lock_theSharing.acquire()
+        try:
+            q = theSharing['queue']
+            obj = q.get()
+            obj.text = request.form['command']
+            q.task_done()
+        finally:
+            lock_theSharing.release()
+        return render_template('control.html')
 
 
 LAST_REQUEST_MS = 0
@@ -62,7 +62,7 @@ LAST_REQUEST_MS = 0
 def update_last_request_ms():
     global LAST_REQUEST_MS
     LAST_REQUEST_MS = time.time() * 1000
-    
+
 @app.route('/seriouslykill', methods=['POST'])
 def seriouslykill():
     func = request.environ.get('werkzeug.server.shutdown')
@@ -70,7 +70,7 @@ def seriouslykill():
         raise RuntimeError('Not running with the Werkzeug Server')
     func()
     return "Shutting down..."
-    
+
 @app.route('/kill', methods=['POST'])
 def kill():
     last_ms = LAST_REQUEST_MS
@@ -92,9 +92,6 @@ class workerThread(threading.Thread):
         threading.Thread.__init__(self)
         self.finished = False
         self.daemon = True
-        
-        
-
 
     def run(self):
         app.run(host='0.0.0.0', port=5000)
@@ -103,8 +100,8 @@ class workerThread(threading.Thread):
     def stop(self):
         self.finished = True
         requests.post('http://localhost:5000/kill')
-        
-        
+
+
 
 
 
@@ -134,7 +131,6 @@ def waitForLandscapeMode():
 # the main class
 class MyWebVRView(ui.View):
     def __init__(self, url):
-
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
@@ -159,34 +155,33 @@ class MyWebVRView(ui.View):
 
     def will_close(self):
        self.finished = True
-        
+
     def start_workerThread(self):
-        global app
         global theThread
-        with lock_cache:
-            cache['q'] = queue.Queue(1)
+        global theSharing
+        with lock_theSharing:
+            theSharing['queue'] = queue.Queue(1)
         theThread = workerThread()
         theThread.start()
-        
-        
+
+
     def stop_workerThread(self):
-        global theThread
         if theThread is None:
             return
         theThread.stop()
         while theThread and theThread.isAlive():
-            with lock_cache:
-                q = cache['q']
+            with lock_theSharing:
+                q = theSharing['queue']
                 if q.empty():
                     q.put(self)
             time.sleep(1.0/60)
 
-            
+
     def update(self):
         self.numframe += 1
         now = datetime.utcnow().strftime('%b. %d, %H:%M:%S UTC')
-        with lock_cache:
-            q = cache['q']
+        with lock_theSharing:
+            q = theSharing['queue']
             if q.empty():
                 q.put(self)
 
@@ -201,9 +196,9 @@ class MyWebVRView(ui.View):
             self.update()
             time.sleep(1.0/60)
         self.stop_workerThread()
- 
 
-            
+
+
     def loadURL(self, url):
         url = self.patch_SKETCHFAB_page(url)
         self.wv.load_url(url)
@@ -252,7 +247,5 @@ if __name__ == '__main__':
     url = demoURL[demoID-1]
 
     waitForLandscapeMode()
-    
-    MyWebVRView(url).run()
-    
 
+    MyWebVRView(url).run()
