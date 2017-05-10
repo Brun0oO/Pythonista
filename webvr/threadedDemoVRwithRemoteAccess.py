@@ -5,7 +5,7 @@ import threading, queue
 from contextlib import closing
 
 from datetime import datetime
-import re, urllib.request
+import re, urllib.request, socket
 
 from flask import Flask, request, render_template
 
@@ -76,14 +76,19 @@ def kill():
     last_ms = LAST_REQUEST_MS
     def shutdown():
         if LAST_REQUEST_MS <= last_ms:  # subsequent requests abort shutdown
-            requests.post('http://localhost:5000/seriouslykill')
+            requests.post('http://localhost/seriouslykill')
         else:
             pass
 
     Timer(1.0, shutdown).start()  # wait 1 second
     return "Shutting down..."
 
-
+def get_local_ip_addr(): # Get the local ip address of the device
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # Make a socket object
+    s.connect(('8.8.8.8', 80)) # Connect to google
+    ip = s.getsockname()[0] # Get our IP address from the socket
+    s.close() # Close the socket
+    return ip # And return the IP address
 
 # thread worker
 class workerThread(threading.Thread):
@@ -94,12 +99,12 @@ class workerThread(threading.Thread):
         self.daemon = True
 
     def run(self):
-        app.run(host='0.0.0.0', port=5000)
-        print("stopped")
+        app.run(host='0.0.0.0', port=80)
 
     def stop(self):
         self.finished = True
-        requests.post('http://localhost:5000/kill')
+        requests.post('http://localhost/kill')
+
 
 
 
@@ -243,7 +248,7 @@ customEnterVR();
             res=self.wv.eval_js(js_code)
 
 if __name__ == '__main__':
-    demoID = console.alert('Select a demo','','sketchfab','a-frame')
+    demoID = console.alert('Select a demo','(%s)'%get_local_ip_addr(),'sketchfab','a-frame')
     url = demoURL[demoID-1]
 
     waitForLandscapeMode()
