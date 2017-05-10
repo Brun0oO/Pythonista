@@ -13,6 +13,9 @@ from objc_util import *
 
 import requests
 from threading import Timer
+import httplib2
+from urllib.parse import urlparse
+
 
 
 
@@ -92,14 +95,8 @@ def check_if_url_is_valid(value):
     return int(resp[0]['status']) < 400
 
 def unshorten_url(url):
-    parsed = urlparse.urlparse(url)
-    h = httplib.HTTPConnection(parsed.netloc)
-    h.request('HEAD', parsed.path)
-    response = h.getresponse()
-    if response.status/100 == 3 and response.getheader('Location'):
-        return response.getheader('Locatiob')
-    else:
-        return url
+    r = requests.head(url, allow_redirects=True)
+    return r.url
 
 # thread worker
 class workerThread(threading.Thread):
