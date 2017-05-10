@@ -95,14 +95,19 @@ class workerThread(threading.Thread):
 
     def __init__(self):
         threading.Thread.__init__(self)
-        self.finished = False
         self.daemon = True
 
     def run(self):
-        app.run(host='0.0.0.0', port=80)
+        NSNetService = ObjCClass('NSNetService')  # Bonjour publication
+        service = NSNetService.alloc().initWithDomain_type_name_port_('', '_http._tcp', 'VR Viewer Panel', 80)
+        try:
+            service.publish()
+            app.run(host='0.0.0.0', port=80)
+        finally:
+            service.stop()
+            service.release()
 
     def stop(self):
-        self.finished = True
         requests.post('http://localhost/kill')
 
 
