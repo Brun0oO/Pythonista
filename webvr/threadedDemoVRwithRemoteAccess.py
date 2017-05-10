@@ -91,10 +91,25 @@ def get_local_ip_addr(): # Get the local ip address of the device
     ip = s.getsockname()[0] # Get our IP address from the socket
     s.close() # Close the socket
     return ip # And return the IP address
+    
+def check_if_url_is_valid(value):
+    h = httplib2.Http()
+    value = unshorten_url(value)
+    resp = h.request(value, 'HEAD')
+    return int(resp[0]['status']) < 400
+
+def unshorten_url(url):
+    parsed = urlparse.urlparse(url)
+    h = httplib.HTTPConnection(parsed.netloc)
+    h.request('HEAD', parsed.path)
+    response = h.getresponse()
+    if response.status/100 == 3 and response.getheader('Location'):
+        return response.getheader('Locatiob')
+    else:
+        return url
 
 # thread worker
 class workerThread(threading.Thread):
-
     def __init__(self):
         threading.Thread.__init__(self)
         self.daemon = True
