@@ -1,5 +1,17 @@
 # coding: utf-8
 
+# This tool allows to open webvr content in true fullscreen mode on iOS devices using Pythonista.
+# Two vr contents are available :
+# - the first one comes from sketchfab and displays a 3D room.
+# - the second one comes from https://github.com/ryanbetts/dayframe .
+# It uses the web framework 'AFrame' for building vr experiences. The "more one thing" is the emulation of a daydream controller.
+# (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote
+# but as this is a public demo and as the author mentioned it : only one person at a time can control the remote. If you join, you will disconnect the previously connected remote)
+# Three secret features are also available :
+# - you can trigger an url page loading on your device using a remote web browser connected to your device
+# - you can adjust the vertical offset and the scale of the web rendering using gestures (find them !). All adjustments are stored so if an url is reloaded, there are applyed again automatically...
+# - if you need to interact with the web view, make a long press until you feel a vibration, then you have 10 seconds to manipulate it before the top view takes the control again. You will feel a new vibration, and the top view will catch the touch events (vertical offset and scale gestures)
+
 import ui, console, time, motion
 import threading, queue
 from contextlib import closing
@@ -10,58 +22,58 @@ import re, urllib.request, socket
 from flask import Flask, request, render_template
 
 from objc_util import *
+import ctypes
+c=ctypes.CDLL(None)
+
+def vibrate():
+    p = c.AudioServicesPlaySystemSound
+    p.restype, p.argtypes = None, [ctypes.c_int32]
+    vibrate_id=0x00000fff
+    p(vibrate_id)
 
 import requests
 from threading import Timer
 import httplib2
 from urllib.parse import urlparse
 
+from Gestures import Gestures
+import math
+import json, os
+REGISTRY_PATH='./data/registry.txt'
 
-
-
-
-
-
-# This demo allows to open webvr content in true fullscreen mode using Pythonista.
-# Two vr contents are available :
-# - the first one comes from sketchfab and displays a 3D room.
-# - the second one comes from https://github.com/ryanbetts/dayframe .
-# It uses a web framework for building vr experiences. The "more one thing" is the emulation of a daydream controller.
-# (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote)
-
-demoURLs = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
-httpPort = 8080
+theDemoURLs = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
+theHttpPort = 8080
 
 theThread = None
 theSharing = {}
 
-lock_theSharing = threading.RLock()
-app = Flask(__name__)
+theLock = threading.RLock()
+theApp = Flask(__name__)
 
 
-@app.route("/", methods=['GET', 'POST'])
+@theApp.route("/", methods=['GET', 'POST'])
 def index():
     if request.method == 'GET':
         return render_template('control.html')
     else:
-        lock_theSharing.acquire()
+        theLock.acquire()
         try:
             q = theSharing['queue']
             obj = q.get()
             obj.next_url = request.form['command']
             q.task_done()
         finally:
-            lock_theSharing.release()
+            theLock.release()
         return render_template('control.html')
 
 
 LAST_REQUEST_MS = 0
-@app.before_request
+@theApp.before_request
 def update_last_request_ms():
     global LAST_REQUEST_MS
     LAST_REQUEST_MS = time.time() * 1000
 
-@app.route('/seriouslykill', methods=['POST'])
+@theApp.route('/seriouslykill', methods=['POST'])
 def seriouslykill():
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
@@ -69,12 +81,12 @@ def seriouslykill():
     func()
     return "Shutting down..."
 
-@app.route('/kill', methods=['POST'])
+@theApp.route('/kill', methods=['POST'])
 def kill():
     last_ms = LAST_REQUEST_MS
     def shutdown():
         if LAST_REQUEST_MS <= last_ms:  # subsequent requests abort shutdown
-            requests.post('http://localhost:%d/seriouslykill' % httpPort)
+            requests.post('http://localhost:%d/seriouslykill' % theHttpPort)
         else:
             pass
 
@@ -98,6 +110,8 @@ def unshorten_url(url):
     r = requests.head(url, allow_redirects=True)
     return r.url
 
+
+
 # thread worker
 class workerThread(threading.Thread):
     def __init__(self):
@@ -106,25 +120,20 @@ class workerThread(threading.Thread):
 
     def run(self):
         NSNetService = ObjCClass('NSNetService')  # Bonjour publication
-        service = NSNetService.alloc().initWithDomain_type_name_port_('', '_http._tcp', 'VR Viewer Panel', httpPort)
+        service = NSNetService.alloc().initWithDomain_type_name_port_('', '_http._tcp', 'iOS webVR Viewer', theHttpPort)
         try:
             service.publish()
-            app.run(host='0.0.0.0', port=httpPort)
+            theApp.run(host='0.0.0.0', port=theHttpPort) 
         finally:
             service.stop()
             service.release()
 
     def stop(self):
-        requests.post('http://localhost:%d/kill' % httpPort)
+        requests.post('http://localhost:%d/kill' % theHttpPort)
 
 
 
-
-
-
-
-
-# as it's important to hold in landscape mode the phone before creating the view,
+# As it's important to hold the phone in landscape mode before creating the view,
 # a dedicated function has been created...
 def waitForLandscapeMode():
     msg = 'Please, hold your phone in landscape mode'
@@ -151,32 +160,107 @@ class MyWebVRView(ui.View):
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
         self.wv = ui.WebView(frame=self.bounds)
+        self.wv.background_color= 'black'
         self.finished = False
         self.current_url = None
         self.next_url = ""
         self.start_workerThread()
-
-        # for an iphone 6S plus, a small vertical offset needs to be set
-        trans = ui.Transform().translation(0,-27)
-        sx = 1.07 # and a small scale (almost for sketchfab can be ignored for an aframe page)
-        scale = ui.Transform().scale(sx,sx)
-        self.wv.transform = trans.concat(scale)
-
-        #self.wv.load_url(url)
         self.add_subview(self.wv)
-
+        
+        self.gv = ui.View(frame=self.bounds)
+        self.gv.alpha = 0.05
+        self.gv.background_color = 'white'
+        self.add_subview(self.gv)
+        self.gv.bring_to_front()
+        self.ty=-27
+        self.sx=1
+        self.applyVerticalOffset()
+        self.applyScale()
+        self.registry={}
+        self.readRegistry()
+        g = Gestures()
+        g.add_pan(self.gv, self.pan_handler,1,1)
+        g.add_pinch(self.gv, self.pinch_handler)
+        g.add_long_press(self.gv, self.long_press_handler)
         self.present("full_screen", hide_title_bar=True, orientations=['landscape'])
 
         self.loadURL(url)
+        
+        
+    def pan_handler(self, data):
+        self.ty += int(data.velocity.y*1.0/50)
+        self.applyVerticalOffset()
+        self.saveInfoToRegistry(self.current_url, self.ty, self.sx)
+        
+    
+    def pinch_handler(self, data):
+        self.sx += data.velocity/50
+        self.applyScale()
+        self.saveInfoToRegistry(self.current_url, self.ty, self.sx)
+     
+     
+    def long_press_handler(self, data):
+        if data.state==Gestures.BEGAN:
+            vibrate()
+            self.gv.alpha = 0
+            ui.delay(self.restoreAlpha, 10)
+        
+        
+    def restoreAlpha(self):
+        self.gv.alpha=0.05
+        vibrate()
+        
+    # small persistent storage mechanism   
+    def writeRegistry(self):
+        with open(REGISTRY_PATH, 'w') as outfile:
+            json.dump(self.registry, outfile, indent=2, sort_keys=True)
+        
+        
+    def readRegistry(self):
+        directory = os.path.dirname(REGISTRY_PATH)
+        if not os.path.exists(directory):           
+            os.makedirs(directory)
+            return
+        if os.path.exists(REGISTRY_PATH):
+            with open(REGISTRY_PATH) as json_file:
+                self.registry = json.load(json_file)
+            
+        
+    def readInfoFromRegistry(self, url):
+        key = self.buildKeyFromURL(url)
+        if key in self.registry:
+            return self.registry[key]
+        return (self.ty, self.sx)
+    
+    def saveInfoToRegistry(self, url, pos, scale):
+        key = self.buildKeyFromURL(url)
+        self.registry[key] = (pos,scale)
+        self.writeRegistry()
+  
+    # create a key from an url
+    def buildKeyFromURL(self, url):
+        pos = url.find("://")
+        tokens = url[pos+3:].split('/')
+        return tokens[0]
+        
+    # a little function to set the web view layout
+    def applyVerticalOffset(self):
+        self.wv.y = self.ty  
+          
+    def applyScale(self):
+        self.wv.transform = ui.Transform().scale(self.sx, self.sx)
 
-
+    # here we observe the exit
     def will_close(self):
        self.finished = True
 
+    # some thread management used to
+    # react to the remote change
+    # of the current url
     def start_workerThread(self):
         global theThread
         global theSharing
-        with lock_theSharing:
+        with theLock:
             theSharing['queue'] = queue.Queue(1)
         theThread = workerThread()
         theThread.start()
@@ -187,7 +271,7 @@ class MyWebVRView(ui.View):
             return
         theThread.stop()
         while theThread and theThread.isAlive():
-            with lock_theSharing:
+            with theLock:
                 q = theSharing['queue']
                 if q.empty():
                     q.put(self)
@@ -196,7 +280,7 @@ class MyWebVRView(ui.View):
 
     def update(self):
         url = ""
-        with lock_theSharing:
+        with theLock:
             q = theSharing['queue']
             if q.empty():
                 q.put(self)
@@ -216,11 +300,15 @@ class MyWebVRView(ui.View):
         url = self.patch_SKETCHFAB_page(url)
         if check_if_url_is_valid(url):
             if self.current_url is None or (self.current_url != url):
+                print("loading %s" % url)
                 self.current_url = url
                 self.wv.load_url(self.current_url)
                 self.patch_AFRAME_page()
+                self.ty, self.sx = self.readInfoFromRegistry(url)
+                self.applyVerticalOffset()
+                self.applyScale()
 
-    # in case of a sketchfab url, add the auto cardboard view parameter at the end of string...
+    # The following function returns the given url but in case of a sketchfab url, it adds the auto cardboard view parameter at the end of string...
     def patch_SKETCHFAB_page(self, url):
         result = url.lower()
         if result.startswith("https://sketchfab.com/models/"):
@@ -228,11 +316,14 @@ class MyWebVRView(ui.View):
                 result += "/embed?autostart=1&cardboard=1"
         return result
 
-    # in case of a aframe url, inject a custom javascript code in order to force the enterVR trigger...
+
+        
+    # An other trick in case of a aframe url, it will inject a custom javascript code in order to force the enterVR trigger...
+    # but sometimes, the following hack seems to be wrong...
+    # The screen stays in desktop mode, you have to restart the demo or click on the cardboard icon.
+    # Perhaps, my delay is too short or something goes wrong with the browser cache...
+    
     def patch_AFRAME_page(self):
-        # but sometimes, the following hack seems to be wrong...
-        # The screen stays in desktop mode, you have to restart the demo or click on the cardboard icon.
-        # Perhaps, my delay is too short or something goes wrong with the browser cache...
         js_code = """
 function customEnterVR () {
   var scene = document.getElementById('scene');
@@ -259,9 +350,13 @@ customEnterVR();
             res=self.wv.eval_js(js_code)
 
 if __name__ == '__main__':
-    demoID = console.alert('Select a demo','(%s:%d)'% (get_local_ip_addr(), httpPort),'sketchfab','a-frame')
-    url = demoURLs[demoID-1]
+    console.set_idle_timer_disabled(True)
+    
+    demoID = console.alert('Select a demo','(%s:%d)'% (get_local_ip_addr(), theHttpPort),'sketchfab','a-frame')
+    url = theDemoURLs[demoID-1]
 
     waitForLandscapeMode()
-
+    
     MyWebVRView(url).run()
+    
+    console.set_idle_timer_disabled(False)
