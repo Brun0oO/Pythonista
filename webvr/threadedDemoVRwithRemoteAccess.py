@@ -8,9 +8,9 @@
 # (when you choose this demo, try to use an other phone with a web browser opened on https://dayframe-demo.herokuapp.com/remote
 # but as this is a public demo and as the author mentioned it : only one person at a time can control the remote. If you join, you will disconnect the previously connected remote)
 # Three secret features are also available :
-# - you can trigger an url page loading on your device using a remote web browser connected to your device
+# - you can trigger an url page loading on your device using a remote web browser connected to this device
 # - you can adjust the vertical offset and the scale of the web rendering using gestures (find them !). All adjustments are stored so if an url is reloaded, there are applyed again automatically...
-# - if you need to interact with the web view, make a long press until you feel a vibration, then you have 10 seconds to manipulate it before the top view takes the control again. You will feel a new vibration, and the top view will catch the touch events (vertical offset and scale gestures)
+# - if you need to interact with the web view, make a long press until you feel a vibration, then you have 10 seconds to manipulate it before the top view takes the control again. You will feel a new vibration, and the top view will catch again the touch events (vertical offset and scale gestures)
 
 import ui, console, time, motion
 import threading, queue
@@ -43,10 +43,8 @@ REGISTRY_PATH='./data/registry.txt'
 
 theDemoURLs = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 theHttpPort = 8080
-
 theThread = None
 theSharing = {}
-
 theLock = threading.RLock()
 theApp = Flask(__name__)
 
@@ -159,6 +157,7 @@ class MyWebVRView(ui.View):
     def __init__(self, url):
         self.width, self.height = ui.get_window_size()
         self.background_color= 'black'
+        # the webview
         self.wv = ui.WebView(frame=self.bounds)
         self.wv.background_color= 'black'
         self.finished = False
@@ -166,31 +165,44 @@ class MyWebVRView(ui.View):
         self.next_url = ""
         self.start_workerThread()
         self.add_subview(self.wv)
-        
+        # a top view for catching gesture events
         self.gv = ui.View(frame=self.bounds)
         self.gv.alpha = 0.05
         self.gv.background_color = 'white'
         self.add_subview(self.gv)
         self.gv.bring_to_front()
+        # some variables for setting the layout
         self.ty=-27
         self.sx=1
         self.applyVerticalOffset()
         self.applyScale()
+        # view adjustment per url are saved here
         self.registry={}
         self.readRegistry()
+        # gesture setup
         g = Gestures()
         g.add_pan(self.gv, self.pan_handler,1,1)
         g.add_pinch(self.gv, self.pinch_handler)
         g.add_long_press(self.gv, self.long_press_handler)
+        # launch the layout
         self.present("full_screen", hide_title_bar=True, orientations=['landscape'])
-
+        # load the url
         self.loadURL(url)
         
+    def get_pan_x_limits(self):
+        range = self.width*0.1
+        x_min= (self.width-range)*0.5
+        x_max = (self.width+range)*0.5       
+        return x_min, x_max
         
     def pan_handler(self, data):
-        self.ty += int(data.velocity.y*1.0/50)
-        self.applyVerticalOffset()
-        self.saveInfoToRegistry(self.current_url, self.ty, self.sx)
+        # get the safe area for this gesture
+        x_min, x_max = self.get_pan_x_limits()
+        x = data.location.x
+        if (x >= x_min) and (x <= x_max):
+            self.ty += int(data.velocity.y*1.0/50)
+            self.applyVerticalOffset()
+            self.saveInfoToRegistry(self.current_url, self.ty, self.sx)
         
     
     def pinch_handler(self, data):
@@ -200,13 +212,20 @@ class MyWebVRView(ui.View):
      
      
     def long_press_handler(self, data):
-        if data.state==Gestures.BEGAN:
-            vibrate()
-            self.gv.alpha = 0
-            ui.delay(self.restoreAlpha, 10)
+        # get the safe area for this gesture
+        x_min, x_max = self.get_pan_x_limits()
+        x = data.location.x
+        if (x <= x_min) or (x >= x_max):       
+            if data.state==Gestures.BEGAN:
+                # a little feedback...
+                vibrate()
+                # ...and we disable the top view using the alpha parameter of this view
+                self.gv.alpha = 0
+                ui.delay(self.restoreAlpha, 10)
         
         
     def restoreAlpha(self):
+        # restore the alpha parameter of the top view. Notice, it's a small small value ;)
         self.gv.alpha=0.05
         vibrate()
         
@@ -277,7 +296,7 @@ class MyWebVRView(ui.View):
                     q.put(self)
             time.sleep(1.0/60)
 
-
+    # this method allows to maintain a communication with the worker thread using a queue 
     def update(self):
         url = ""
         with theLock:
@@ -297,6 +316,10 @@ class MyWebVRView(ui.View):
 
 
     def loadURL(self, url):
+        if url=="": # force reload/refresh the current url
+            url=self.current_url
+            self.current_url=None
+            
         url = self.patch_SKETCHFAB_page(url)
         if check_if_url_is_valid(url):
             if self.current_url is None or (self.current_url != url):
@@ -350,13 +373,19 @@ customEnterVR();
             res=self.wv.eval_js(js_code)
 
 if __name__ == '__main__':
+    # disable the ios screensaver
     console.set_idle_timer_disabled(True)
     
+    # ask the user for the first url loading.
+    # he has the choice between a sketchfab or an a-frame scene
     demoID = console.alert('Select a demo','(%s:%d)'% (get_local_ip_addr(), theHttpPort),'sketchfab','a-frame')
     url = theDemoURLs[demoID-1]
-
-    waitForLandscapeMode()
     
+    # it's very important to hold the phone in landscape mode before the ui.view creation so ...
+    waitForLandscapeMode()
+
+    # fasten your seatbelts, start the engine and let's get doing!...
     MyWebVRView(url).run()
     
+    # restore the ios screensaver
     console.set_idle_timer_disabled(False)
