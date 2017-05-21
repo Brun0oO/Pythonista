@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 from Gestures import Gestures
 import math
 import json, os
-REGISTRY_PATH='./data/registry.txt'
+REGISTRY_PATH='./.data/registry.txt'
 
 theDemoURLs = ["https://sketchfab.com/models/311d052a9f034ba8bce55a1a8296b6f9/embed?autostart=1&cardboard=1","https://dayframe-demo.herokuapp.com/scene"]
 theHttpPort = 8080
