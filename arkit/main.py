@@ -1,10 +1,11 @@
 # coding: utf-8
 
 from objc_util import *
+import ui
 
 load_framework('ARKit')
 
-SCNScene, SCNNode, SCNLookAtConstraint = map(ObjCClass, ['SCNScene', 'SCNNode', 'SCNLookAtConstraint'])
+SCNView, SCNScene, SCNNode, SCNLookAtConstraint = map(ObjCClass, ['SCNView', 'SCNScene', 'SCNNode', 'SCNLookAtConstraint'])
 
 ARWorldTrackingSessionConfiguration, ARSessionConfiguration, ARSession = map(ObjCClass,['ARWorldTrackingSessionConfiguration','ARSessionConfiguration','ARSession'])
 
@@ -27,12 +28,7 @@ def main():
     arSession = ARSession.alloc()
 
 
-    #arSession.delegate = MyARKitDelegate.alloc().init()
-    #print(dir(arSession))
-
-    print(dir(SCNScene))
-
-    exit()
+    arSession.delegate = MyARKitDelegate.alloc().init()
 
     main_view = ui.View()
     main_view_objc = ObjCInstance(main_view)
@@ -42,7 +38,7 @@ def main():
     main_view_objc.addSubview_(scene_view)
     main_view.name = 'ARKit Demo'
 
-    scene = SCNScene.scene("assets/dragon/main.scn")
+    scene = SCNScene.sceneNamed_("assets/dragon/main.scn")
     scene_view.setScene_(scene)
 
     main_view.present()
