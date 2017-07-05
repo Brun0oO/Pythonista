@@ -14,3 +14,7 @@ It has some hidden features ;o)
 * You can change the current content using a remote web browser connected to your iOS device.
 
 * The tool detects sketchfab content and activates automatically its VR view. A same mechanism exists for A-frame content but it's more experimental.
+
+## ARKit
+
+My first attempt to use the ARKit framework within iOS 11 Beta...
