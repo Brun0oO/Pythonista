@@ -17,4 +17,22 @@ It has some hidden features ;o)
 
 ## ARKit
 
-My first attempt to use the ARKit framework within iOS 11 Beta...
+My first attempt to use the ARKit framework within iOS 11 Beta...  
+**!! Caution, slippery floor !!**  
+**Work in progress**
+
+## RShell
+
+If you want to access to your stash opened on your iOS device from your desktop, you can use this script.  
+You have to download it on your bin stash directory and call it from the stash prompt simply by using rshell with -l as argument.
+
+```
+  stash> rshell -l
+```
+
+Then, on your desktop, install this script and call it with the ip address of your iOS device as argument and let the magic happen...
+```
+  $> rshell 192.168.0.40
+```
+
+Personally, on my desktop, I prefer to call it from my PyCharm IDE because its console is smarter than the standard terminal to use the backspace key for example...

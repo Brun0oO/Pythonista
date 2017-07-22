@@ -17,6 +17,12 @@ methods = [renderer_didAdd_for_]
 protocols = ['ARSCNViewDelegate']
 MyARKitDelegate = create_objc_class('MyARKitDelegate', NSObject, methods=methods, protocols=protocols)
 
+dragonNode = SCNNode.node()
+
+def loadDragon():
+    global dragonNode
+    dragonScene = SCNScene.sceneNamed_("assets/dragon/dragon.scn")
+    dragonNode = dragonScene.rootNode.childNodeWithName_recursively_("dragon", True)
 
 @on_main_thread
 def main():
@@ -40,6 +46,8 @@ def main():
 
     scene = SCNScene.sceneNamed_("assets/dragon/main.scn")
     scene_view.setScene_(scene)
+
+    loadDragon()
 
     main_view.present()
 
