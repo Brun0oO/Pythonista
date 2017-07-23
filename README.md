@@ -5,7 +5,7 @@ Here you can find things about Pythonista (a complete development environment fo
 As it's currently difficult to watch web VR content in full screen on iOS devices, i created this tool.
 It has some hidden features ;o)
 
-![Live](https://cloud.githubusercontent.com/assets/10347315/26284635/88eb498a-3e40-11e7-8798-8961e92da0cd.gif)
+![Live session](https://cloud.githubusercontent.com/assets/10347315/26284635/88eb498a-3e40-11e7-8798-8961e92da0cd.gif)
 
 * Some gestures allow you to adjust the presentation (vertical offset and scaling).
 
@@ -36,3 +36,5 @@ Then, on your desktop, install this script and call it with the ip address of yo
 ```
 
 Personally, on my desktop, I prefer to call it from my PyCharm IDE because its console is smarter than the standard terminal to use the backspace key for example...
+
+![Live session](https://user-images.githubusercontent.com/10347315/28498512-80baefa0-6f9f-11e7-8bf3-b9519a5fe4c3.gif)
