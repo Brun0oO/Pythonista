@@ -17,7 +17,7 @@ It has some hidden features ;o)
 
 ## ARKit
 
-My first attempt to use the ARKit framework within iOS 11 Beta...  
+My first attempt to use the ARKit framework within iOS 12.1 (and Pythonista 3.3)...  
 **!! Caution, slippery floor !!**  
 **Work in progress**
 
