@@ -21,6 +21,9 @@ My first attempt to use the ARKit framework within iOS 12.1 (and Pythonista 3.3)
 **!! Caution, slippery floor !!**  
 **Work in progress**
 
+![Live session](https://user-images.githubusercontent.com/10347315/50767430-1986fe00-127d-11e9-8a67-1aaaca3c8d54.gif)
+
+
 ## RShell
 
 If you want to access to your stash opened on your iOS device from your desktop, you can use this script.  
