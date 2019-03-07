@@ -116,6 +116,9 @@ def partial_response(path, start, end=None):
         'Accept-Ranges', 'bytes'
     )
     response.headers.add(
+        'Access-Control-Allow-Origin', '*'
+    )
+    response.headers.add(
         'Vary', 'Accept-Encoding'
     )
     return response
@@ -239,7 +242,7 @@ class MyWebVRView(ui.View):
         res=self.wv.eval_js(js_code)        
 
     def loadURL(self, url):
-        self.wv.load_url(url)
+        self.wv.load_url(url, no_cache=True)
     
         
         

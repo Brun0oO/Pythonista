@@ -1,159 +1,6 @@
+#coding: utf-8
 '''
 # WKWebView - modern webview for Pythonista
-
-The underlying component used to implement  ui.WebView in Pythonista is UIWebView, which has been deprecated since iOS 8. This module implements a Python webview API using the current iOS-provided view, WKWebView. Besides being Apple-supported, WKWebView brings other benefits such as better Javascript performance and an official communication channel from Javascript to Python. This implementation of a Python API also has the additional benefit of being inheritable.
-
-Available as a [single file](https://github.com/mikaelho/youey/blob/master/youey/wkwebview.py) on GitHub. Run the file as-is to try out some of the capabilities; check the end of the file for demo code.
-
-Credits: This would not exist without @JonB and @mithrendal.
-
-## Basic usage
-
-WKWebView matches ui.WebView API as defined in Pythonista docs. For example:
-
-```
-v = WKWebView()
-v.present()
-v.load_html('<body>Hello world</body>')
-v.load_url('http://omz-software.com/pythonista/')
-```
-
-For compatibility, there is also the same delegate API that ui.WebView has, with `webview_should_start_load` etc. methods.
-
-## Mismatches with ui.WebView
-
-### Synchronous vs. asynchronous JS evaluation
-
-Apple's WKWebView only provides an async Javascript evaliation function. This is available as an `eval_js_async` method, with an optional `callback` argument that will be called with a single argument containing the result of the JS evaluation (or None).
-
-We also provide a synchronous `eval_js` method, which essentially waits for the callback before returning the result. For this to work, you have to call the `eval_js` method outside the main UI thread, e.g. from a method decorated with `ui.in_background`.
-
-### Handling page scaling
-
-UIWebView had a property called `scales_page_to_fit`, WKWebView does not. See below for the various `disable` methods that can be used instead.
-
-## Additional features and notes
-
-### http allowed
-
-Looks like Pythonista has the specific plist entry required to allow fetching non-secure http urls. 
-
-### Other url schemes
-
-If you try to open a url not natively supported by WKWebView, such as `tel:` for phone numbers, the `webbrowser` module is used to open it.
-
-### Swipe navigation
-
-There is a new property, `swipe_navigation`, False by default. If set to True, horizontal swipes navigate backwards and forwards in the browsing history.
-
-Note that browsing history is only updated for calls to `load_url` - `load_html` is ignored (Apple feature that has some security justification).
-
-### Data detection
-
-By default, no Apple data detectors are active for WKWebView. You can activate them by including one or a tuple of the following values as the `data_detectors` argument to the constructor: NONE, PHONE_NUMBER, LINK, ADDRESS, CALENDAR_EVENT, TRACKING_NUMBER, FLIGHT_NUMBER, LOOKUP_SUGGESTION, ALL.
-
-For example, activating just the phone and link detectors:
-  
-    v = WKWebView(data_detectors=(WKWebView.PHONE_NUMBER, WKWebView.LINK))
-
-### Messages from JS to Python
-
-WKWebView comes with support for JS-to-container messages. Use this by subclassing WKWebView and implementing methods that start with `on_` and accept one message argument. These methods are then callable from JS with the pithy `window.webkit.messageHandler.<name>.postMessage` call, where `<name>` corresponds to whatever you have on the method name after the `on_` prefix.
-
-Here's a minimal example:
-  
-    class MagicWebView(WKWebView):
-      
-      def on_magic(self, message):
-        print('WKWebView magic ' + message)
-        
-    html = '<body><button onclick="window.webkit.messageHandlers.magic.postMessage(\'spell\')">Cast a spell</button></body>'
-    
-    v = MagicWebView()
-    v.load_html(html)
-    
-Note that JS postMessage must have a parameter, and the message argument to the Python handler is always a string version of that parameter. For structured data, you need to use e.g. JSON at both ends.
-
-### User scripts a.k.a. script injection
-
-WKWebView supports defining JS scripts that will be automatically loaded with every page. 
-
-Use the `add_script(js_script, add_to_end=True)` method for this.
-
-Scripts are added to all frames. Removing scripts is currently not implemented.
-
-Following two convenience methods are also available:
-  
-* `add_style(css)` to add a style tag containing the given CSS style definition.
-* `add_meta(name, content)` to add a meta tag with the given name and content.
-
-### Making a web page behave more like an app
-
-These methods set various style and meta tags to disable typical web interaction modes:
-  
-* `disable_zoom`
-* `disable_user_selection`
-* `disable_font_resizing`
-* `disable_scrolling` (alias for setting `scroll_enabled` to False)
-
-There is also a convenience method, `disable_all`, which calls all of the above.
-
-Note that disabling user selection will also disable the automatic data detection of e.g. phone numbers, described earlier.
-
-### Javascript debugging
-
-Javascript errors and console messages are sent to Python side and printed to Pythonista console. Supported JS console methods are `log`, `info`, `warn` and `error`.
-
-For further JS debugging and experimentation, there is a simple convenience command-line utility that can be used to evaluate load URLs and evaluate javascript. If you `present` your app as a 'panel', you can easily switch between the tabs for your web page and this console.
-
-Or you can just create a WKWebView manually for quick experimentation, like in the usage example below. 
-
-    >>> from wkwebview import *
-    >>> v = WKWebView(name='Demo')
-    >>> WKWebView.console()
-    Welcome to WKWebView console. Evaluate javascript in any active WKWebView. Special commands: list, switch #, load <url>, quit
-    js> list
-    0 - Demo - 
-    js> load http://omz-software.com/pythonista/
-    js> list
-    0 - Demo - Pythonista for iOS
-    js> document.title
-    Pythonista for iOS
-    js> quit
-    >>> v2 = WKWebView(name='Other view')
-    >>> WKWebView.console()
-    Welcome to WKWebView console. Evaluate javascript in any active WKWebView. Special commands: list, switch #, load <url>, quit
-    js> list
-    0 - Demo - Pythonista for iOS
-    1 - Other view - 
-    js> switch 1
-    js> load https://www.python.org
-    js> document.title
-    Welcome to Python.org
-    js> window.doesNotExist.wrongFunction()
-    ERROR: TypeError: undefined is not an object (evaluating 'window.doesNotExist.wrongFunction') (https://www.python.org/, line: 1, column: 20)
-    None
-    js> quit
-
-### Customize Javascript popups
-
-Javascript alert, confirm and prompt dialogs are now implemented with simple Pythonista equivalents. If you need something fancier or e.g. internationalization support, subclass WKWebView and re-implement the following methods as needed:
-  
-    def _javascript_alert(self, host, message):
-      console.alert(host, message, 'OK', hide_cancel_button=True)
-      
-    def _javascript_confirm(self, host, message):
-      try:
-        console.alert(host, message, 'OK')
-        return True
-      except KeyboardInterrupt:
-        return False
-      
-    def _javascript_prompt(self, host, prompt, default_text):
-      try:
-        return console.input_alert(host, prompt, default_text, 'OK')
-      except KeyboardInterrupt:
-        return None
 '''
 
 from objc_util import  *
@@ -191,8 +38,9 @@ class WKWebView(ui.View):
     accessoryViewController().\
     consoleViewController()
 
-  def __init__(self, swipe_navigation=False, data_detectors=NONE, log_js_evals=False, respect_safe_areas=False, **kwargs):
-    
+  #>Brun0oO
+  def __init__(self, swipe_navigation=False, allowsInlineMediaPlayback=True, data_detectors=NONE, log_js_evals=False, respect_safe_areas=False, **kwargs):
+  #<Brun0oO 
     WKWebView.webviews.append(self)
     self.delegate = None
     self.log_js_evals = log_js_evals
@@ -215,9 +63,13 @@ class WKWebView(ui.View):
         
     webview_config = WKWebView.WKWebViewConfiguration.new().autorelease()
     webview_config.userContentController = user_content_controller
-    webview_config.allowsInlineMediaPlayback = True
-
-    
+    #>Brun0oO
+    webview_config.allowsInlineMediaPlayback = allowsInlineMediaPlayback
+    webview_config.preferences().setValue_forKey_(True, "developerExtrasEnabled")
+    #webview_config.allowsLinkPreview=True
+    #webview_config.allowsPictureInPictureMediaPlayback=True
+    #webview_config.mediaTypesRequiringUserActionForPlayback=False
+    #<Brun0oO
     data_detectors = sum(data_detectors) if type(data_detectors) is tuple else data_detectors
     
     # Must be set to True to get real js 
@@ -252,11 +104,18 @@ class WKWebView(ui.View):
       self.update_safe_area_insets()
     
   @on_main_thread
-  def load_url(self, url):
+  def load_url(self, url, no_cache=False, timeout=10):
     ''' Loads the contents of the given url
     asynchronously.
     
-    If the url starts with `file://`, loads a local file. If the remaining url starts with `/`, path starts from Pythonista root.
+    If the url starts with `file://`, loads a local file. If the remaining url
+    starts with `/`, path starts from Pythonista root.
+    
+    For remote (non-file) requests, there are
+    two additional options:
+      
+      * Set `no_cache` to `True` to skip the local cache, default is `False`
+      * Set `timeout` to a specific timeout value, default is 10 (seconds)
     '''
     if url.startswith('file://'):
       file_path = url[7:]
@@ -271,15 +130,20 @@ class WKWebView(ui.View):
       dir_only = NSURL.fileURLWithPath_(dir_only)
       self.webview.loadFileURL_allowingReadAccessToURL_(file_path, dir_only)
     else:
-      self.webview.loadRequest_(WKWebView.NSURLRequest.requestWithURL_(nsurl(url)))
-  
+      #self.webview.loadRequest_(WKWebView.NSURLRequest.requestWithURL_(nsurl(url)))
+      cache_policy = 1 if no_cache else 0
+      self.webview.loadRequest_(
+        WKWebView.NSURLRequest.requestWithURL_cachePolicy_timeoutInterval_(
+          nsurl(url),
+          cache_policy,
+          timeout))
+      
   @on_main_thread
   def load_html(self, html):
     # Need to set a base directory to get
     # real js errors
     current_working_directory = os.path.dirname(os.getcwd())
     root_dir = NSURL.fileURLWithPath_(current_working_directory)
-    #root_dir = NSURL.fileURLWithPath_(os.path.expanduser('~'))
     self.webview.loadHTMLString_baseURL_(html, root_dir)
     
   def eval_js(self, js):
@@ -301,6 +165,18 @@ class WKWebView(ui.View):
     block = ObjCBlock(handler, restype=None, argtypes=[c_void_p, c_void_p, c_void_p])
     retain_global(block)
     self.webview.evaluateJavaScript_completionHandler_(js, block)
+    
+  def clear_cache(self):
+    '''
+    //// All kinds of data
+//NSSet *websiteDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
+//// Date from
+NSDate *dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
+//// Execute
+[[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:websiteDataTypes modifiedSince:dateFrom completionHandler:^{
+   // Done
+}];
+    '''
     
   # Javascript evaluation completion handler
   
@@ -352,6 +228,24 @@ class WKWebView(ui.View):
     self.disable_scrolling()
     self.disable_user_selection()
     self.disable_font_resizing()
+      
+  @property
+  def user_agent(self):
+    "Must be called outside main thread"
+    return self.eval_js('navigator.userAgent')
+      
+  @on_main_thread
+  def _get_user_agent2(self):
+    return str(self.webview.customUserAgent())
+      
+  @user_agent.setter
+  def user_agent(self, value):
+    value = str(value)
+    self._set_user_agent(value)
+      
+  @on_main_thread
+  def _set_user_agent(self, value):
+    self.webview.setCustomUserAgent_(value)
       
   @on_main_thread
   def go_back(self):
@@ -423,10 +317,14 @@ class WKWebView(ui.View):
     self._message(log_message)
     
   def _message(self, message):
-    level, content = message['level'], message['content']
-    if type(content) is dict:
-      content = ','.join("{!s}={!r}".format(key,val) for (key,val) in content.items())
-
+    #>bruno
+    level = message['level']
+    content = ''
+    if 'content' in message.keys():
+      content = message['content']
+      if type(content) is dict:
+        content = ','.join("{!s}={!r}".format(key,val) for (key,val) in content.items())
+    #<bruno
     if level == 'code':
       print('>>> ' + content)
     elif level == 'raw':
@@ -678,7 +576,7 @@ class WKWebView(ui.View):
 
 
 if __name__ == '__main__':
-  
+
   class MyWebViewDelegate:
     
     def webview_should_start_load(self, webview, url, nav_type):
@@ -736,11 +634,7 @@ if __name__ == '__main__':
 
   r.present() # Use 'panel' if you want to view console in another tab
   
-  
-  
-  
-  
   #v.disable_all()
   v.load_html(html)
-  #v.load_url('http://omz-software.com/pythonista/')
+  #v.load_url('http://omz-software.com/pythonista/', no_cache=True, timeout=5)
   #v.load_url('file://some/local/file.html')
